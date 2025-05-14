@@ -1,5 +1,5 @@
 - name: Phase 2 - Join remaining masters using extracted token
-  hosts: masters[1:]
+  hosts: masters
   become: true
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
@@ -20,12 +20,6 @@
       set_fact:
         rke2_cluster_token: "{{ token_file.content | b64decode | trim }}"
 
-- name: Install and configure RKE2 server on masters
-  hosts: masters
-  become: true
-  vars:
-    rancher_endpoint: "{{ rancher_endpoint }}"
-  tasks:
     - name: Ensure RKE2 config directory exists
       file:
         path: /etc/rancher/rke2
