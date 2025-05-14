@@ -4,7 +4,7 @@
   hosts: all
   become: true
   vars:
-    rancher_endpoint: "{{ rancher_endpoint }}"
+    rancher_endpoint: "changeme"
   tasks:
     - name: Ensure DNS resolution for {{ rancher_endpoint }}
       shell: getent hosts {{ rancher_endpoint }}
