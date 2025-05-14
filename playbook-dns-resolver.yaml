@@ -1,0 +1,37 @@
+# playbook-dns-resolver.yaml
+---
+- name: Add DNS server and validate hostname resolution
+  hosts: all
+  become: true
+  vars:
+    dns_server: ""
+  tasks:
+
+    - name: Ensure DNS server is present in /etc/resolv.conf
+      lineinfile:
+        path: /etc/resolv.conf
+        line: "nameserver {{ dns_server }}"
+        state: present
+        insertafter: BOF
+
+     - name: Get default IP address of the host
+      command: hostname -I
+      register: ip_result
+
+    - name: Extract first non-loopback IP
+      set_fact:
+        node_ip: "{{ ip_result.stdout.split() | select('match', '^((?!127\\.).)*$') | list | first }}"
+
+    - name: Perform reverse DNS lookup with getent
+      command: "getent hosts {{ node_ip }}"
+      register: reverse_lookup
+      ignore_errors: yes
+
+    - name: Fail if reverse DNS lookup fails
+      fail:
+        msg: "Reverse DNS resolution failed for IP {{ node_ip }} on {{ inventory_hostname }}"
+      when: reverse_lookup.rc != 0
+
+    - name: Show resolved hostname from reverse DNS
+      debug:
+        msg: "Node {{ inventory_hostname }} with IP {{ node_ip }} resolves to: {{ reverse_lookup.stdout }}"
