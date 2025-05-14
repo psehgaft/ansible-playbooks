@@ -6,8 +6,8 @@
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: Ensure DNS resolution for {{ rancher_endpoint }}
-      shell: getent hosts {{ rancher_endpoint }}
+    - name: "Ensure DNS resolution for {{ rancher_endpoint }}"
+      shell: "getent hosts {{ rancher_endpoint }}"
       register: dns_check
       failed_when: dns_check.rc != 0
       changed_when: false
