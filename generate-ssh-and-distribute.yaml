@@ -1,0 +1,47 @@
+# generate-ssh-and-distribute.yaml
+---
+- name: Generate and distribute SSH key to all inventory nodes
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ssh_key_path: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa"
+  tasks:
+
+    - name: Check if SSH key already exists
+      stat:
+        path: "{{ ssh_key_path }}"
+      register: ssh_key
+
+    - name: Generate SSH key pair (if not present)
+      command: ssh-keygen -t rsa -b 4096 -f {{ ssh_key_path }} -N ""
+      when: not ssh_key.stat.exists
+
+    - name: Read public key
+      slurp:
+        src: "{{ ssh_key_path }}.pub"
+      register: pubkey
+
+    - name: Set public key content as variable
+      set_fact:
+        public_key: "{{ pubkey.content | b64decode }}"
+
+- name: Distribute SSH public key to nodes
+  hosts: all
+  become: true
+  vars:
+    ansible_ssh_pipelining: true
+  tasks:
+
+    - name: Ensure .ssh directory exists for the user
+      file:
+        path: /root/.ssh
+        state: directory
+        mode: '0700'
+        owner: root
+        group: root
+
+    - name: Add SSH public key to authorized_keys
+      authorized_key:
+        user: root
+        key: "{{ hostvars['localhost']['public_key'] }}"
+        state: present
