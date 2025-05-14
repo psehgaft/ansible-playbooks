@@ -6,8 +6,8 @@
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: "Ensure DNS resolution for {{ rancher_endpoint }}"
-      shell: "getent hosts {{ rancher_endpoint }}"
+    - name: Ensure DNS resolution for {{ rancher_endpoint }}
+      shell: getent hosts {{ rancher_endpoint }}
       register: dns_check
       failed_when: dns_check.rc != 0
       changed_when: false
@@ -20,6 +20,21 @@
     rancher_backend: "{{ rancher_backend }}"
     rancher_backend_console: "{{ rancher_backend_console }}"
   tasks:
+    - name: Install policycoreutils-python-utils (for semanage)
+      package:
+        name: policycoreutils-python-utils
+        state: present
+
+    - name: Allow HAProxy to bind ports 443 and 6443 in SELinux
+      ansible.posix.seport:
+        ports: "{{ item }}"
+        proto: tcp
+        setype: http_port_t
+        state: present
+      loop:
+        - 443
+        - 6443
+
     - name: Generate HAProxy configuration with Rancher masters
       template:
         src: haproxy.cfg.dynamic.j2
@@ -34,19 +49,19 @@
         state: restarted
         enabled: true
 
-- name: Install RKE2 server on masters
+- name: Install and configure RKE2 server on masters
   hosts: masters
   become: true
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: Install RKE2
+    - name: Ensure RKE2 is installed
       shell: |
         curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server sh -
       args:
         creates: /usr/local/bin/rke2
 
-    - name: Create RKE2 config
+    - name: Ensure correct RKE2 config is deployed
       copy:
         dest: /etc/rancher/rke2/config.yaml
         content: |
@@ -56,9 +71,22 @@
           node-taint: []
           disable:
             - rke2-ingress-nginx
+        owner: root
+        group: root
+        mode: '0644'
       notify: Restart RKE2
 
-    - name: Enable and start RKE2 server
+    - name: Allow RKE2 ports in SELinux
+      ansible.posix.seport:
+        ports: "{{ item }}"
+        proto: tcp
+        setype: kube_apiserver_port_t
+        state: present
+      loop:
+        - 6443
+        - 9345
+
+    - name: Enable and start RKE2 service
       systemd:
         name: rke2-server
         enabled: yes
@@ -91,7 +119,10 @@
     - name: Install cert-manager
       shell: |
         kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
-        helm install cert-manager jetstack/cert-manager --namespace cert-manager --set installCRDs=true --version v1.12.4
+        helm upgrade --install cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --version v1.12.4 \
+          --set installCRDs=true
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
 
@@ -101,10 +132,14 @@
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: Install Rancher
+    - name: Create namespace cattle-system
+      shell: kubectl create namespace cattle-system --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+    - name: Install or upgrade Rancher
       shell: |
-        kubectl create namespace cattle-system --dry-run=client -o yaml | kubectl apply -f -
-        helm install rancher rancher-latest/rancher \
+        helm upgrade --install rancher rancher-latest/rancher \
           --namespace cattle-system \
           --set hostname={{ rancher_endpoint }} \
           --set replicas=3 \
