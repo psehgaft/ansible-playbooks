@@ -1,5 +1,22 @@
 
 ---
+- name: Extract RKE2 cluster token from first master
+  hosts: masters[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read RKE2 cluster token
+      slurp:
+        src: /var/lib/rancher/rke2/server/node-token
+      register: rke2_token_raw
+      ignore_errors: true
+
+    - name: Set fact with decoded RKE2 token
+      set_fact:
+        rke2_cluster_token: "{{ rke2_token_raw.content | b64decode | trim }}"
+      when: rke2_token_raw is defined and rke2_token_raw.content is defined
+      cacheable: true
+
 - name: Validate DNS on all nodes
   hosts: all
   become: true
@@ -24,16 +41,6 @@
       package:
         name: policycoreutils-python-utils
         state: present
-
-#    - name: Allow HAProxy to bind ports 443 and 6443 in SELinux
-#      ansible.posix.seport:
-#        ports: "{{ item }}"
-#        proto: tcp
-#        setype: http_port_t
-#        state: present
-#      loop:
-#        - 443
-#        - 6443
 
     - name: Allow port 6443 for Kubernetes API manually
       command: semanage port -a -t http_port_t -p tcp "{{ item }}"
@@ -63,10 +70,6 @@
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: Ensure correct RKE2 config is deployed
-      copy:
-        dest: /etc/rancher/rke2/config.yaml
-
     - name: Ensure RKE2 config directory exists
       file:
         path: /etc/rancher/rke2
@@ -74,7 +77,7 @@
         owner: root
         group: root
         mode: '0755'
-    
+
     - name: Ensure RKE2 is installed
       shell: |
         curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server sh -
@@ -82,29 +85,15 @@
         creates: /usr/local/bin/rke2
 
     - name: Ensure correct RKE2 config is deployed
-      copy:
+      template:
+        src: config.yaml.j2
         dest: /etc/rancher/rke2/config.yaml
-        content: |
-          token: mysecuretoken
-          tls-san:
-            - {{ rancher_endpoint }}
-          node-taint: []
-          disable:
-            - rke2-ingress-nginx
         owner: root
         group: root
         mode: '0644'
+      vars:
+        token: "{{ hostvars[groups['masters'][0]]['rke2_cluster_token'] }}"
       notify: Restart RKE2
-
-#    - name: Allow RKE2 ports in SELinux
-#      ansible.posix.seport:
-#        ports: "{{ item }}"
-#        proto: tcp
-#        setype: kube_apiserver_port_t
-#        state: present
-#      loop:
-#        - 6443
-#        - 9345
 
     - name: Allow port 6443 for Kubernetes API manually
       command: semanage port -a -t http_port_t -p tcp "{{ item }}"
@@ -143,7 +132,7 @@
         helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
         helm repo add jetstack https://charts.jetstack.io
         helm repo update
-        
+
     - name: Wait until the API Server is ready
       shell: |
         for i in $(seq 1 30); do
@@ -162,10 +151,7 @@
     - name: Install cert-manager
       shell: |
         kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
-        helm upgrade --install cert-manager jetstack/cert-manager \
-          --namespace cert-manager \
-          --version v1.12.4 \
-          --set installCRDs=true
+        helm upgrade --install cert-manager jetstack/cert-manager           --namespace cert-manager           --version v1.12.4           --set installCRDs=true
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
 
@@ -182,11 +168,7 @@
 
     - name: Install or upgrade Rancher
       shell: |
-        helm upgrade --install rancher rancher-latest/rancher \
-          --namespace cattle-system \
-          --set hostname={{ rancher_endpoint }} \
-          --set replicas=3 \
-          --set ingress.tls.source=self-signed
+        helm upgrade --install rancher rancher-latest/rancher           --namespace cattle-system           --set hostname={{ rancher_endpoint }}           --set replicas=3           --set ingress.tls.source=self-signed
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
 
@@ -212,7 +194,6 @@
     - name: Debug Rancher API response
       debug:
         var: rancher_api.status
-
 
 - name: Post-installation validation
   hosts: masters[0]
