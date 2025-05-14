@@ -1,0 +1,156 @@
+
+---
+- name: Validate DNS on all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure DNS resolution for rancher.example.com
+      shell: getent hosts rancher.example.com
+      register: dns_check
+      failed_when: dns_check.rc != 0
+      changed_when: false
+
+- name: Validate and configure HAProxy
+  hosts: haproxy
+  become: true
+  tasks:
+    - name: Ensure HAProxy configuration contains required timeouts and limits
+      blockinfile:
+        path: /etc/haproxy/haproxy.cfg
+        marker: "# {mark} RANCHER CONFIG"
+        block: |
+          timeout server          1m
+          timeout http-keep-alive 10s
+          timeout check           10s
+          maxconn                 3000
+
+          frontend rancher_apps
+              bind *:443
+              acl url_static       path_beg       -i /static /images /javascript /stylesheets
+              acl url_static       path_end       -i .jpg .gif .png .css .js
+              use_backend static          if url_static
+              default_backend             rancher_backend
+
+          frontend rancher_console
+              bind *:6443
+              acl url_static       path_beg       -i /static /images /javascript /stylesheets
+              acl url_static       path_end       -i .jpg .gif .png .css .js
+              use_backend static          if url_static
+              default_backend             rancher_backend_console
+
+          backend static
+              balance     roundrobin
+              server      static 127.0.0.1:4331 check
+
+          backend rancher_backend
+              balance     roundrobin
+              server  server1 192.168.1.12:443 check
+              server  server2 192.168.1.13:443 check
+              server  server3 192.168.1.14:443 check
+
+          backend rancher_backend_console
+              balance     roundrobin
+              server  master1 192.168.1.12:6443 check
+              server  master2 192.168.1.13:6443 check
+              server  master3 192.168.1.14:6443 check
+
+    - name: Restart HAProxy to apply changes
+      systemd:
+        name: haproxy
+        state: restarted
+        enabled: true
+
+- name: Install RKE2 server on masters
+  hosts: masters
+  become: true
+  tasks:
+    - name: Install RKE2
+      shell: |
+        curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server sh -
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Create RKE2 config
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          token: mysecuretoken
+          tls-san:
+            - rancher.example.com
+          node-taint: []
+          disable:
+            - rke2-ingress-nginx
+      notify: Restart RKE2
+
+    - name: Enable and start RKE2 server
+      systemd:
+        name: rke2-server
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Restart RKE2
+      systemd:
+        name: rke2-server
+        state: restarted
+
+- name: Install Helm and cert-manager
+  hosts: masters[0]
+  become: true
+  tasks:
+    - name: Install Helm
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Add Helm repositories
+      shell: |
+        helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo update
+
+    - name: Install cert-manager
+      shell: |
+        kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+        helm install cert-manager jetstack/cert-manager --namespace cert-manager --set installCRDs=true --version v1.12.4
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Install Rancher with Helm
+  hosts: masters[0]
+  become: true
+  tasks:
+    - name: Install Rancher
+      shell: |
+        kubectl create namespace cattle-system --dry-run=client -o yaml | kubectl apply -f -
+        helm install rancher rancher-latest/rancher \
+          --namespace cattle-system \
+          --set hostname=rancher.example.com \
+          --set replicas=3 \
+          --set ingress.tls.source=self-signed
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+    - name: Wait for Rancher deployment
+      shell: kubectl -n cattle-system rollout status deploy/rancher
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+    - name: Copy kubeconfig for Rancher API usage
+      fetch:
+        src: /etc/rancher/rke2/rke2.yaml
+        dest: ./rancher-kubeconfig.yaml
+        flat: yes
+
+    - name: Test Rancher API
+      uri:
+        url: https://rancher.example.com/v3
+        method: GET
+        validate_certs: no
+        return_content: yes
+      register: rancher_api
+
+    - name: Debug Rancher API response
+      debug:
+        var: rancher_api.status
