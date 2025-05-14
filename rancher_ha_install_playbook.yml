@@ -44,15 +44,15 @@
 
           backend rancher_backend
               balance     roundrobin
-              server  server1 192.168.1.12:443 check
-              server  server2 192.168.1.13:443 check
-              server  server3 192.168.1.14:443 check
+              server  server1 [IP1]:443 check
+              server  server2 [IP2]:443 check
+              server  server3 [IP3]:443 check
 
           backend rancher_backend_console
               balance     roundrobin
-              server  master1 192.168.1.12:6443 check
-              server  master2 192.168.1.13:6443 check
-              server  master3 192.168.1.14:6443 check
+              server  master1 [IP1]:6443 check
+              server  master2 [IP2]:6443 check
+              server  master3 [IP3]:6443 check
 
     - name: Restart HAProxy to apply changes
       systemd:
