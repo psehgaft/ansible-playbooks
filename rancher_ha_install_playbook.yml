@@ -36,7 +36,7 @@
 #        - 6443
 
     - name: Allow port 6443 for Kubernetes API manually
-      command: semanage port -a -t kube_apiserver_port_t -p tcp "{{ item }}"
+      command: semanage port -a -t http_port_t -p tcp "{{ item }}"
       ignore_errors: yes
       when: ansible_selinux.status == "enabled"
       loop:
@@ -95,7 +95,7 @@
 #        - 9345
 
     - name: Allow port 6443 for Kubernetes API manually
-      command: semanage port -a -t kube_apiserver_port_t -p tcp "{{ item }}"
+      command: semanage port -a -t http_port_t -p tcp "{{ item }}"
       ignore_errors: yes
       when: ansible_selinux.status == "enabled"
       loop:
@@ -134,7 +134,7 @@
         
     - name: Wait until the API Server is ready
       shell: |
-        for i in {{ 1..30 }}; do
+        for i in $(seq 1 30); do
           kubectl get nodes && break
           sleep 10
         done
