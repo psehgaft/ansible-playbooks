@@ -3,9 +3,11 @@
 - name: Validate DNS on all nodes
   hosts: all
   become: true
+  vars:
+    rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: Ensure DNS resolution for rancher.example.com
-      shell: getent hosts rancher.example.com
+    - name: Ensure DNS resolution for {{ rancher_endpoint }}
+      shell: getent hosts {{ rancher_endpoint }}
       register: dns_check
       failed_when: dns_check.rc != 0
       changed_when: false
@@ -13,10 +15,14 @@
 - name: Validate and configure HAProxy
   hosts: haproxy
   become: true
+  vars:
+    rancher_endpoint: "{{ rancher_endpoint }}"
+    rancher_backend: "{{ rancher_backend }}"
+    rancher_backend_console: "{{ rancher_backend_console }}"
   tasks:
     - name: Generate HAProxy configuration with Rancher masters
       template:
-        src: templates/haproxy.cfg.j2
+        src: haproxy.cfg.dynamic.j2
         dest: /etc/haproxy/haproxy.cfg
         mode: '0644'
       notify: Restart HAProxy
@@ -31,6 +37,8 @@
 - name: Install RKE2 server on masters
   hosts: masters
   become: true
+  vars:
+    rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
     - name: Install RKE2
       shell: |
@@ -44,7 +52,7 @@
         content: |
           token: mysecuretoken
           tls-san:
-            - rancher.example.com
+            - {{ rancher_endpoint }}
           node-taint: []
           disable:
             - rke2-ingress-nginx
@@ -65,6 +73,8 @@
 - name: Install Helm and cert-manager
   hosts: masters[0]
   become: true
+  vars:
+    rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
     - name: Install Helm
       shell: |
@@ -88,13 +98,15 @@
 - name: Install Rancher with Helm
   hosts: masters[0]
   become: true
+  vars:
+    rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
     - name: Install Rancher
       shell: |
         kubectl create namespace cattle-system --dry-run=client -o yaml | kubectl apply -f -
         helm install rancher rancher-latest/rancher \
           --namespace cattle-system \
-          --set hostname=rancher.example.com \
+          --set hostname={{ rancher_endpoint }} \
           --set replicas=3 \
           --set ingress.tls.source=self-signed
       environment:
@@ -113,7 +125,7 @@
 
     - name: Test Rancher API
       uri:
-        url: https://rancher.example.com/v3
+        url: https://{{ rancher_endpoint }}/v3
         method: GET
         validate_certs: no
         return_content: yes
