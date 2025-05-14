@@ -25,15 +25,23 @@
         name: policycoreutils-python-utils
         state: present
 
-    - name: Allow HAProxy to bind ports 443 and 6443 in SELinux
-      ansible.posix.seport:
-        ports: "{{ item }}"
-        proto: tcp
-        setype: http_port_t
-        state: present
+#    - name: Allow HAProxy to bind ports 443 and 6443 in SELinux
+#      ansible.posix.seport:
+#        ports: "{{ item }}"
+#        proto: tcp
+#        setype: http_port_t
+#        state: present
+#      loop:
+#        - 443
+#        - 6443
+
+    - name: Allow port 6443 for Kubernetes API manually
+      command: semanage port -a -t kube_apiserver_port_t -p tcp "{{ item }}"
+      ignore_errors: yes
+      when: ansible_selinux.status == "enabled"
       loop:
-        - 443
         - 6443
+        - 9345
 
     - name: Generate HAProxy configuration with Rancher masters
       template:
@@ -76,12 +84,20 @@
         mode: '0644'
       notify: Restart RKE2
 
-    - name: Allow RKE2 ports in SELinux
-      ansible.posix.seport:
-        ports: "{{ item }}"
-        proto: tcp
-        setype: kube_apiserver_port_t
-        state: present
+#    - name: Allow RKE2 ports in SELinux
+#      ansible.posix.seport:
+#        ports: "{{ item }}"
+#        proto: tcp
+#        setype: kube_apiserver_port_t
+#        state: present
+#      loop:
+#        - 6443
+#        - 9345
+
+    - name: Allow port 6443 for Kubernetes API manually
+      command: semanage port -a -t kube_apiserver_port_t -p tcp "{{ item }}"
+      ignore_errors: yes
+      when: ansible_selinux.status == "enabled"
       loop:
         - 6443
         - 9345
