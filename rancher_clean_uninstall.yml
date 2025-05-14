@@ -1,0 +1,55 @@
+
+---
+- name: Cleanup RKE2 and Kubernetes data from all nodes
+  hosts: all
+  become: true
+  tasks:
+    - name: Stop RKE2 server or agent if running
+      shell: |
+        systemctl stop rke2-server || systemctl stop rke2-agent
+      ignore_errors: true
+
+    - name: Disable RKE2 server or agent service
+      shell: |
+        systemctl disable rke2-server || systemctl disable rke2-agent
+      ignore_errors: true
+
+    - name: Remove RKE2 configuration directory
+      file:
+        path: /etc/rancher/rke2
+        state: absent
+
+    - name: Remove RKE2 data directory
+      file:
+        path: /var/lib/rancher/rke2
+        state: absent
+
+    - name: Remove Kubernetes configuration directory
+      file:
+        path: /etc/kubernetes
+        state: absent
+
+    - name: Unmount kubelet volumes
+      shell: |
+        mount | grep /var/lib/kubelet | awk '{print $3}' | sort -r | xargs -r umount
+      ignore_errors: true
+
+    - name: Remove kubelet data directory
+      file:
+        path: /var/lib/kubelet
+        state: absent
+
+    - name: Remove default RKE2 kubeconfig
+      file:
+        path: /etc/rancher/rke2/rke2.yaml
+        state: absent
+      ignore_errors: true
+
+    - name: Confirm cleanup status
+      shell: |
+        echo "Cleanup completed on $(hostname)"
+      register: cleanup_result
+
+    - name: Show cleanup result
+      debug:
+        var: cleanup_result.stdout
