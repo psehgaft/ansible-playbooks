@@ -141,6 +141,12 @@
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
 
+    - name: Wait until all nodes are Ready
+      shell: |
+        kubectl wait --for=condition=Ready nodes --all --timeout=180s
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
     - name: Install cert-manager
       shell: |
         kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
