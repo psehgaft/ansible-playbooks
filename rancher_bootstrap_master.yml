@@ -1,17 +1,11 @@
 
 ---
-- name: Phase 1 - Bootstrap first master node (no token required)
+- name: Phase 1 - Bootstrap first master node with proper tls-san configuration
   hosts: masters[0]
   become: true
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
-    - name: Ensure DNS resolution for {{ rancher_endpoint }}
-      shell: getent hosts {{ rancher_endpoint }}
-      register: dns_check
-      failed_when: dns_check.rc != 0
-      changed_when: false
-      
     - name: Ensure RKE2 config directory exists
       file:
         path: /etc/rancher/rke2
@@ -20,13 +14,7 @@
         group: root
         mode: '0755'
 
-    - name: Ensure RKE2 is installed
-      shell: |
-        curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server sh -
-      args:
-        creates: /usr/local/bin/rke2
-
-    - name: Deploy RKE2 config without token
+    - name: Deploy RKE2 config with tls-san
       copy:
         dest: /etc/rancher/rke2/config.yaml
         content: |
@@ -39,10 +27,24 @@
         group: root
         mode: '0644'
 
-    - name: Enable and start RKE2 service
+    - name: Install RKE2 server (prevent auto-enable)
+      shell: |
+        curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server INSTALL_RKE2_SKIP_ENABLE=true sh -
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Ensure old TLS and kubeconfig are removed
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/rancher/rke2/server/tls
+        - /etc/rancher/rke2/rke2.yaml
+
+    - name: Enable and start RKE2 server manually
       systemd:
         name: rke2-server
-        enabled: yes
+        enabled: true
         state: started
 
     - name: Wait for RKE2 to generate the node token
