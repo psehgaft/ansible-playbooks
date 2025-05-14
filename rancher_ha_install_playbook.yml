@@ -131,6 +131,15 @@
         helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
         helm repo add jetstack https://charts.jetstack.io
         helm repo update
+        
+    - name: Wait until the API Server is ready
+      shell: |
+        for i in {{ 1..30 }}; do
+          kubectl get nodes && break
+          sleep 10
+        done
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
 
     - name: Install cert-manager
       shell: |
