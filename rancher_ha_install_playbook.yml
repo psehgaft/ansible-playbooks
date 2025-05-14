@@ -14,47 +14,15 @@
   hosts: haproxy
   become: true
   tasks:
-    - name: Ensure HAProxy configuration contains required timeouts and limits
-      blockinfile:
-        path: /etc/haproxy/haproxy.cfg
-        marker: "# {mark} RANCHER CONFIG"
-        block: |
-          timeout server          1m
-          timeout http-keep-alive 10s
-          timeout check           10s
-          maxconn                 3000
+    - name: Generate HAProxy configuration with Rancher masters
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        mode: '0644'
+      notify: Restart HAProxy
 
-          frontend rancher_apps
-              bind *:443
-              acl url_static       path_beg       -i /static /images /javascript /stylesheets
-              acl url_static       path_end       -i .jpg .gif .png .css .js
-              use_backend static          if url_static
-              default_backend             rancher_backend
-
-          frontend rancher_console
-              bind *:6443
-              acl url_static       path_beg       -i /static /images /javascript /stylesheets
-              acl url_static       path_end       -i .jpg .gif .png .css .js
-              use_backend static          if url_static
-              default_backend             rancher_backend_console
-
-          backend static
-              balance     roundrobin
-              server      static 127.0.0.1:4331 check
-
-          backend rancher_backend
-              balance     roundrobin
-              server  server1 [IP1]:443 check
-              server  server2 [IP2]:443 check
-              server  server3 [IP3]:443 check
-
-          backend rancher_backend_console
-              balance     roundrobin
-              server  master1 [IP1]:6443 check
-              server  master2 [IP2]:6443 check
-              server  master3 [IP3]:6443 check
-
-    - name: Restart HAProxy to apply changes
+  handlers:
+    - name: Restart HAProxy
       systemd:
         name: haproxy
         state: restarted
