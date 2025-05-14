@@ -63,6 +63,18 @@
   vars:
     rancher_endpoint: "{{ rancher_endpoint }}"
   tasks:
+    - name: Ensure correct RKE2 config is deployed
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+
+    - name: Ensure RKE2 config directory exists
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    
     - name: Ensure RKE2 is installed
       shell: |
         curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server sh -
