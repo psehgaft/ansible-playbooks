@@ -48,7 +48,7 @@
         group: root
         mode: '0644'
       vars:
-        token: "{{ hostvars[groups['masters'][0]]['rke2_cluster_token'] }}"
+        token: "{{ rke2_cluster_token }}"
       notify: Restart RKE2
 
     - name: Allow port 6443 for Kubernetes API manually
