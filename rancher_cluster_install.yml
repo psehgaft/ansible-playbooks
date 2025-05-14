@@ -43,3 +43,48 @@
         name: rke2-server
         enabled: yes
         state: started
+  
+- name: Post-installation validation
+  hosts: masters[0]
+  become: true
+  vars:
+    rancher_endpoint: "{{ rancher_endpoint }}"
+  tasks:
+    - name: Validate Rancher pods are running
+      shell: |
+        kubectl get pods -n cattle-system --no-headers | grep -v Running && exit 1 || exit 0
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      register: rancher_pods_status
+      failed_when: rancher_pods_status.rc != 0
+
+    - name: Validate cert-manager pods are running
+      shell: |
+        kubectl get pods -n cert-manager --no-headers | grep -v Running && exit 1 || exit 0
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      register: cert_pods_status
+      failed_when: cert_pods_status.rc != 0
+
+    - name: Validate Kubernetes node status is Ready
+      shell: |
+        kubectl get nodes --no-headers | grep -v Ready && exit 1 || exit 0
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      register: node_ready_check
+      failed_when: node_ready_check.rc != 0
+
+    - name: Validate Rancher Console via curl
+      uri:
+        url: "https://{{ rancher_endpoint }}/dashboard"
+        method: GET
+        validate_certs: no
+        return_content: yes
+      register: rancher_console
+      retries: 5
+      delay: 10
+      until: rancher_console.status == 200
+
+    - name: Report Rancher Console availability
+      debug:
+        msg: "Rancher Console is reachable and returned status {{ rancher_console.status }}"
