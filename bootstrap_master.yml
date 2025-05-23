@@ -1,0 +1,77 @@
+---
+- name: Phase 1 - Bootstrap first master node with proper tls-san configuration
+  hosts: masters[0]
+  become: true
+  vars:
+    rancher_endpoint: "rancher-mex.inguzp.cloud"
+  tasks:
+
+    - name: Validate DNS resolution for Rancher endpoint
+      shell: getent hosts {{ rancher_endpoint }}
+      register: dns_check
+      failed_when: dns_check.rc != 0
+      changed_when: false
+
+    - name: Ensure /etc/hosts entry exists for Rancher endpoint
+      lineinfile:
+        path: /etc/hosts
+        line: "192.168.1.17 {{ rancher_endpoint }}"
+        state: present
+      when: dns_check.rc != 0
+
+    - name: Ensure RKE2 config directory exists
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Clean old kubeconfig and TLS if present
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/rke2/rke2.yaml
+        - /var/lib/rancher/rke2/server/tls
+
+    - name: Deploy RKE2 config with tls-san
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          tls-san:
+            - {{ rancher_endpoint }}
+            - 192.168.1.17
+            - 192.168.1.12
+          node-taint: []
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install RKE2 server (skip auto-enable)
+      shell: |
+        curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server INSTALL_RKE2_SKIP_ENABLE=true sh -
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Enable and start RKE2 server service
+      systemd:
+        name: rke2-server
+        enabled: true
+        state: started
+
+    - name: Wait for node-token to be generated
+      wait_for:
+        path: /var/lib/rancher/rke2/server/node-token
+        timeout: 180
+
+    - name: Wait for kubeconfig to be generated
+      wait_for:
+        path: /etc/rancher/rke2/rke2.yaml
+        timeout: 180
+
+    - name: Validate kubeconfig references the correct rancher_endpoint
+      shell: grep "{{ rancher_endpoint }}" /etc/rancher/rke2/rke2.yaml
+      register: kubeconfig_check
+      failed_when: kubeconfig_check.rc != 0
+      changed_when: false

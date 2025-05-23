@@ -1,0 +1,12 @@
+[masters]
+192.168.1.12 ansible_user=root ansible_become_pass=Inguz2025
+192.168.1.13 ansible_user=root ansible_become_pass=Inguz2025
+192.168.1.14 ansible_user=root ansible_become_pass=Inguz2025
+[dns]
+192.168.1.16 ansible_user=root ansible_become_pass=Inguz2025
+[haproxy]
+192.168.1.17 ansible_user=root ansible_become_pass=Inguz2025 ansible_python_interpreter=/usr/bin/python3
+[workers]
+192.168.0.14 ansible_user=inguz ansible_become_pass=Inguz2025
+192.168.0.15 ansible_user=inguz ansible_become_pass=Inguz2025
+192.168.0.16 ansible_user=inguz ansible_become_pass=Inguz2025

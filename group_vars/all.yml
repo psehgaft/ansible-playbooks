@@ -1,0 +1,17 @@
+#rancher_endpoint: rancher-mex.inguzp.cloud
+
+rancher_backend:
+  - name: server1
+    address: 192.168.1.12
+  - name: server2
+    address: 192.168.1.13
+  - name: server3
+    address: 192.168.1.14
+
+rancher_backend_console:
+  - name: master1
+    address: 192.168.1.12
+  - name: master2
+    address: 192.168.1.13
+  - name: master3
+    address: 192.168.1.14

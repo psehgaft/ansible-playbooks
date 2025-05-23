@@ -1,10 +1,9 @@
-# playbook-dns-resolver.yaml
 ---
 - name: Add DNS server and validate hostname resolution
   hosts: all
   become: true
   vars:
-    dns_server: ""
+    dns_server: "192.168.1.16"
   tasks:
 
     - name: Ensure DNS server is present in /etc/resolv.conf
@@ -14,7 +13,7 @@
         state: present
         insertafter: BOF
 
-     - name: Get default IP address of the host
+    - name: Get default IP address of the host
       command: hostname -I
       register: ip_result
 
