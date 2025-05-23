@@ -1,0 +1,30 @@
+---
+- name: Generate SSH key and distribute to target nodes
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Check if SSH key already exists
+      stat:
+        path: "{{ ssh_key_path }}"
+      register: ssh_key
+
+    - name: Generate SSH key if it doesn't exist
+      openssh_keypair:
+        path: "{{ ssh_key_path }}"
+        type: rsa
+        size: 4096
+      when: not ssh_key.stat.exists
+
+- name: Copy SSH key to target nodes
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Install authorized key on target nodes
+      authorized_key:
+        user: "{{ remote_user }}"
+        state: present
+        key: "{{ lookup('file', ssh_key_path + '.pub') }}"

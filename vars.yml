@@ -1,0 +1,5 @@
+# Ruta local donde se guarda la llave
+ssh_key_path: "../.ssh/id_rsa"
+
+# Usuario remoto al que se le copiará la llave
+remote_user: "root"
